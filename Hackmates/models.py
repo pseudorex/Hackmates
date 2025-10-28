@@ -11,6 +11,7 @@ class Users(Base):
     last_name = Column(String)
     hashed_password = Column(String)
     is_active = Column(Boolean, default=True)
+    is_verified = Column(Boolean, default=False)
     role = Column(String)
     phone_number = Column(String)
 

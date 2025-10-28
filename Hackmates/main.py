@@ -4,6 +4,8 @@ from starlette.middleware.sessions import SessionMiddleware
 from models import Base
 from database import engine
 from routers import auth
+from dotenv import load_dotenv
+load_dotenv()
 
 app = FastAPI()
 

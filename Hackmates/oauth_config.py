@@ -26,3 +26,4 @@ oauth.register(
     api_base_url="https://api.github.com/",
     client_kwargs={"scope": "user:email"}
 )
+

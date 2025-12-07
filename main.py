@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 from models import Base
 from database import engine
-from routers import auth
+from routers.auth.routes import router
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -21,5 +21,5 @@ async def check_healthy():
     return {"status": "Healthy"}
 
 # Include routers
-app.include_router(auth.router)
+app.include_router(router)
 

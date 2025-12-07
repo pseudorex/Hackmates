@@ -14,4 +14,5 @@ class Users(Base):
     is_verified = Column(Boolean, default=False)
     role = Column(String)
     phone_number = Column(String)
+    profile_image = Column(String, nullable=True)
 

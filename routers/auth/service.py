@@ -1,3 +1,5 @@
+import cloudinary
+import cloudinary.uploader
 from fastapi import HTTPException, status, Request
 from sqlalchemy.orm import Session
 from datetime import timedelta
@@ -11,6 +13,8 @@ from .hashing import Hash
 from .jwt_utils import create_access_token, create_email_verification_token
 from .email_service import EmailService
 from .config import REDIRECT_URI, SECRET_KEY, ALGORITHM
+
+import uuid
 
 
 class AuthService:
@@ -68,10 +72,12 @@ class AuthService:
             expires_delta=timedelta(minutes=30)
         )
 
-        # Store token in Redis (for session control)
-        redis_client.set(f"user_token:{user.id}", token, ex=1800)
+        session_token = str(uuid.uuid4())
 
-        return {"access_token": token, "token_type": "bearer"}
+        # Store token in Redis (for session control)
+        redis_client.set(f"user_token:{session_token}", token, ex=1800)
+
+        return {"access_token": session_token, "token_type": "redis"}
 
     # ------------------------ VERIFY EMAIL ------------------------
     @staticmethod
@@ -101,13 +107,17 @@ class AuthService:
                 expires_delta=timedelta(minutes=30)
             )
 
-            redis_client.set(f"user_token:{user.id}", access_token, ex=1800)
+            # Create Redis session token
+            session_token = str(uuid.uuid4())
+
+            redis_client.set(f"user_token:{session_token}", access_token, ex=1800)
 
             return {
                 "message": "Email verified!",
-                "access_token": access_token,
-                "token_type": "bearer"
+                "access_token": session_token,
+                "token_type": "redis"
             }
+
 
         except jwt.ExpiredSignatureError:
             raise HTTPException(status_code=400, detail="Verification link expired")
@@ -138,6 +148,7 @@ class AuthService:
 
             email = user_info["email"]
             name = user_info["name"]
+            picture_url = user_info.get("picture")
 
         # ------------------ GitHub Auth ------------------
         else:
@@ -149,6 +160,16 @@ class AuthService:
 
             email = github_email.json()[0]["email"]
             name = github_user.json()["login"]
+            picture_url = github_user.json().get("avatar_url")
+
+        cloud_image_url = None
+
+        if picture_url:
+            try:
+                upload_result = cloudinary.uploader.upload(picture_url)
+                cloud_image_url = upload_result["secure_url"]
+            except Exception as e:
+                print("Cloudinary upload error:", e)
 
         # Find or create user
         user = db.query(Users).filter(Users.email == email).first()
@@ -162,11 +183,17 @@ class AuthService:
                 hashed_password=Hash.hash("oauthuser"),
                 is_active=True,
                 is_verified=True,
-                phone_number=""
+                phone_number="",
+                profile_image=cloud_image_url
             )
             db.add(user)
             db.commit()
             db.refresh(user)
+
+        else:
+            if cloud_image_url and user.profile_image != cloud_image_url:
+                user.profile_image = cloud_image_url
+                db.commit()
 
         # Generate JWT
         jwt_token = create_access_token(
@@ -176,17 +203,19 @@ class AuthService:
             expires_delta=timedelta(minutes=30)
         )
 
-        redis_client.set(f"user_token:{user.id}", jwt_token, ex=1800)
+        session_token = str(uuid.uuid4())
+
+        redis_client.set(f"user_token:{session_token}", jwt_token, ex=1800)
 
         return {
-            "access_token": jwt_token,
-            "token_type": "bearer"
+            "access_token": session_token,
+            "token_type": "redis"
         }
 
     # ------------------------ LOGOUT ------------------------
     @staticmethod
     async def logout(current_user):
-        user_id = current_user["id"]
-        redis_client.delete(f"user_token:{user_id}")
+        session_token = current_user["session_token"]
+        redis_client.delete(f"user_token:{session_token}")
 
         return {"message": "Logged out successfully"}

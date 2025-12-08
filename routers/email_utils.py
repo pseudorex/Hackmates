@@ -26,8 +26,8 @@ def send_verification_email(email_to: str, token: str):
             smtp.login(os.getenv("EMAIL_FROM"), os.getenv("EMAIL_PASSWORD"))
             smtp.send_message(msg)
 
-        print(f"✅ Verification email sent to {email_to}")
+        print(f"Verification email sent to {email_to}")
 
     except Exception as e:
-        print(f"❌ Error sending email: {e}")
+        print(f"Error sending email: {e}")
         raise

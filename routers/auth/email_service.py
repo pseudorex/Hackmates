@@ -1,5 +1,4 @@
 from .jwt_utils import create_email_verification_token
-from .config import REDIRECT_URI
 from routers.email_utils import send_verification_email
 
 class EmailService:

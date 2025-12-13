@@ -17,6 +17,8 @@ from .hashing import Hash
 from .jwt_utils import create_access_token
 from .email_service import EmailService
 from .config import REDIRECT_URI, SECRET_KEY, ALGORITHM
+from jose import jwt
+
 
 
 class AuthService:
@@ -30,14 +32,12 @@ class AuthService:
 
         user = Users(
             email=req.email,
-            username=req.username,
-            first_name=req.first_name,
-            last_name=req.last_name,
-            role=req.role,
+            username="Hello",
+            first_name=req.firstName,
+            last_name=req.lastName,
             hashed_password=Hash.hash(req.password),
             is_active=True,
             is_verified=False,
-            phone_number=req.phone_number
         )
 
         db.add(user)
@@ -63,7 +63,6 @@ class AuthService:
         token = create_access_token(
             username=user.username,
             user_id=user.id,
-            role=user.role,
             expires_delta=timedelta(minutes=30)
         )
 
@@ -75,8 +74,6 @@ class AuthService:
     # ------------------------ VERIFY EMAIL ------------------------
     @staticmethod
     async def verify_email(token: str, db: Session):
-        from jose import jwt
-
         try:
             payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
             email = payload.get("sub")
@@ -88,24 +85,52 @@ class AuthService:
             if not user:
                 raise HTTPException(status_code=404, detail="User not found")
 
+            # 🔐 Already verified guard
+            if user.is_verified:
+                deep_link = "hackmates://verified?already=true"
+                return HTMLResponse(
+                    f"""
+                    <html>
+                      <head>
+                        <meta http-equiv="refresh" content="0;url={deep_link}">
+                      </head>
+                      <body>
+                        <p>Email already verified. Redirecting…</p>
+                      </body>
+                    </html>
+                    """
+                )
+
+            # ✅ Mark verified
             user.is_verified = True
             db.commit()
 
+            # Create JWT
             access_token = create_access_token(
                 username=user.username,
                 user_id=user.id,
-                role=user.role,
                 expires_delta=timedelta(minutes=30)
             )
 
+            # Store in Redis
             session_token = str(uuid.uuid4())
-            redis_client.set(f"user_token:{session_token}", access_token, ex=60)
+            redis_client.set(f"user_token:{session_token}", access_token, ex=300)
 
-            return {
-                "message": "Email verified!",
-                "access_token": session_token,
-                "token_type": "redis"
-            }
+            # 🔥 Redirect to Flutter Signup Step-2
+            deep_link = f"hackmates://verified?token={session_token}"
+
+            return HTMLResponse(
+                f"""
+                <html>
+                  <head>
+                    <meta http-equiv="refresh" content="0;url={deep_link}">
+                  </head>
+                  <body>
+                    <p>Email verified. Redirecting back to app…</p>
+                  </body>
+                </html>
+                """
+            )
 
         except jwt.ExpiredSignatureError:
             raise HTTPException(status_code=400, detail="Verification link expired")
@@ -168,11 +193,9 @@ class AuthService:
                 username=name,
                 first_name=name,
                 last_name="",
-                role="user",
-                hashed_password=Hash.hash("oauthuser"),
+                hashed_password=None,
                 is_active=True,
                 is_verified=True,
-                phone_number="",
                 profile_image=cloud_image_url
             )
             db.add(user)
@@ -187,7 +210,6 @@ class AuthService:
         jwt_token = create_access_token(
             username=user.username,
             user_id=user.id,
-            role=user.role,
             expires_delta=timedelta(minutes=30)
         )
 

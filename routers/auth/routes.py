@@ -1,5 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
+
+from models import Users
 from redis_client import redis_client
+from .email_service import EmailService
 from .schemas import CreateUserRequest, Token
 from .oauth2 import get_current_user
 from .service import AuthService
@@ -24,7 +27,7 @@ db_dependency = Annotated[Session, Depends(get_db)]
 async def create_user_route(db: db_dependency, req: CreateUserRequest):
     return await AuthService.create_user(req, db)
 
-@router.post("/token", response_model=Token)
+@router.post("/login", response_model=Token)
 async def login_route(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: db_dependency):
     return await AuthService.login(form_data, db)
 
@@ -72,4 +75,16 @@ async def get_oauth_jwt(key: str):
         "expiresIn": 3600,
         "user": user_data
     }
+
+@router.post("/resend-verification")
+async def resend_verification(email: dict, db: db_dependency):
+    user = db.query(Users).filter(Users.email == email["email"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user.is_verified:
+        raise HTTPException(status_code=400, detail="Email already verified")
+
+    EmailService.send_verification(user)
+    return {"message": "Verification email resent"}
 

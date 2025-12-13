@@ -2,26 +2,45 @@ import smtplib
 from email.message import EmailMessage
 from dotenv import load_dotenv
 import os
+import uuid
+from redis_client import redis_client
 
-# Load environment variables
 load_dotenv()
 
-def send_verification_email(email_to: str, token: str):
+def send_verification_email(email_to: str):
     try:
-        # Your verification link (adjust domain later for production)
-        verification_link = f"http://localhost:8000/auth/verify-email?token={token}"
+        # 🔐 Generate ONE-TIME verification token
+        verification_token = str(uuid.uuid4())
 
-        # Create the email
-        msg = EmailMessage()
-        msg['Subject'] = 'Verify Your Email - Hackmates'
-        msg['From'] = os.getenv("EMAIL_FROM")
-        msg['To'] = email_to
-        msg.set_content(
-            f"Hi!\n\nClick the link below to verify your email address:\n\n{verification_link}\n\n"
-            "If you didn’t request this, you can ignore this message."
+        # Store in Redis (valid for 24 hours)
+        redis_client.set(
+            f"email_verify:{verification_token}",
+            email_to,
+            ex=24 * 60 * 60
         )
 
-        # Connect securely via Gmail SMTP (SSL)
+        # Verification link (ngrok for now)
+        verification_link = (
+            "https://uncookable-annelle-combatable.ngrok-free.dev"
+            f"/auth/verify-email?token={verification_token}"
+        )
+
+        msg = EmailMessage()
+        msg["Subject"] = "Verify Your Email - Hackmates"
+        msg["From"] = os.getenv("EMAIL_FROM")
+        msg["To"] = email_to
+        msg.set_content(
+            f"""Hi!
+
+Click the link below to verify your email address:
+
+{verification_link}
+
+This link will expire in 24 hours.
+If you didn’t request this, you can ignore this email.
+"""
+        )
+
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
             smtp.login(os.getenv("EMAIL_FROM"), os.getenv("EMAIL_PASSWORD"))
             smtp.send_message(msg)
@@ -29,5 +48,5 @@ def send_verification_email(email_to: str, token: str):
         print(f"Verification email sent to {email_to}")
 
     except Exception as e:
-        print(f"Error sending email: {e}")
+        print(f"Error sending verification email: {e}")
         raise

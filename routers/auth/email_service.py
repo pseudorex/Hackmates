@@ -1,8 +1,15 @@
-from .jwt_utils import create_email_verification_token
-from routers.email_utils import send_verification_email
+from routers.email_utils import (
+    send_verification_email,
+    send_password_reset_email
+)
 
 class EmailService:
+    print("email_utils loaded")
     @staticmethod
-    def send_verification(user):
-        token = create_email_verification_token(user.email)
-        send_verification_email(user.email, token)
+    def send_otp(email: str, otp: str):
+        send_verification_email(email, otp)
+
+    @staticmethod
+    def send_password_reset(email: str, reset_link: str):
+        print("Sending password reset email to:", email)
+        send_password_reset_email(email, reset_link)

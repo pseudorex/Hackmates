@@ -1,16 +1,28 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
-
-from models import Users
-from redis_client import redis_client
-from .email_service import EmailService
-from .schemas import CreateUserRequest, Token
-from .oauth2 import get_current_user
-from .service import AuthService
-from database import SessionLocal
+from fastapi import (
+    APIRouter, Depends, HTTPException, Request,
+    Form, File, UploadFile
+)
 from sqlalchemy.orm import Session
-from typing import Annotated
+from typing import Annotated, Optional
 from fastapi.security import OAuth2PasswordRequestForm
 import json
+
+from starlette.responses import HTMLResponse
+
+from redis_client import redis_client
+from database import SessionLocal
+from models import Users, Skills
+from cloudinary.uploader import upload
+
+from .schemas import (
+    CreateUserRequest,
+    Token,
+    VerifyOtpRequest,
+    CompleteProfileRequest
+)
+from .oauth2 import get_current_user
+from .service import AuthService
+
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -31,9 +43,6 @@ async def create_user_route(db: db_dependency, req: CreateUserRequest):
 async def login_route(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: db_dependency):
     return await AuthService.login(form_data, db)
 
-@router.get("/verify-email")
-async def verify_email_route(token: str, db: db_dependency):
-    return await AuthService.verify_email(token, db)
 
 @router.get("/google")
 async def google_login(request: Request):
@@ -76,15 +85,134 @@ async def get_oauth_jwt(key: str):
         "user": user_data
     }
 
-@router.post("/resend-verification")
-async def resend_verification(email: dict, db: db_dependency):
-    user = db.query(Users).filter(Users.email == email["email"]).first()
+@router.post("/resend-otp")
+async def resend_otp(data: dict, db: db_dependency):
+    return await AuthService.resend_otp(
+        email=data["email"],
+        db=db
+    )
+
+
+@router.post("/verify-otp")
+async def verify_otp(data: VerifyOtpRequest, db: db_dependency):
+    return await AuthService.verify_otp(
+        email=data.email,
+        otp=data.otp,
+        db=db
+    )
+
+# ---------------- Complete Profile ----------------
+@router.post("/complete-profile")
+async def complete_profile(
+    bio: str = Form(None),
+    interests: str = Form(None),              # JSON string: ["python","flutter"]
+    profilePhoto: UploadFile | None = File(None),
+
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    print("\n===== COMPLETE PROFILE HIT =====")
+
+    print("bio:", bio)
+    print("skills (raw):", interests)
+
+    # 🔹 Parse skills
+    try:
+        skills_list = json.loads(interests) if interests else []
+    except Exception:
+        raise HTTPException(status_code=400, detail="Skills must be a JSON array")
+
+    # 🔹 Validate
+    profile = CompleteProfileRequest(
+        bio=bio,
+        skills=skills_list
+    )
+
+    # 🔹 Load user
+    user = db.query(Users).filter(Users.id == current_user["id"]).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    if user.is_verified:
-        raise HTTPException(status_code=400, detail="Email already verified")
+    # 🔹 Save bio
+    user.bio = profile.bio
 
-    EmailService.send_verification(user)
-    return {"message": "Verification email resent"}
+    # 🔹 Save skills
+    skill_objects = []
+    for skill_name in profile.skills:
+        skill = db.query(Skills).filter(Skills.name == skill_name).first()
+        if not skill:
+            skill = Skills(name=skill_name)
+            db.add(skill)
+            db.flush()
+        skill_objects.append(skill)
+
+    user.skills = skill_objects
+
+    # 🔹 Upload image
+    if profilePhoto:
+        result = upload(profilePhoto.file)
+        user.profile_image = result.get("secure_url")
+        print("Image URL:", user.profile_image)
+    else:
+        print("No image uploaded")
+
+    db.commit()
+    db.refresh(user)
+
+    return {
+        "message": "Profile completed successfully",
+        "bio": user.bio,
+        "skills": [s.name for s in user.skills],
+        "profile_image": user.profile_image,
+    }
+
+
+@router.post("/forgot-password")
+async def forgot_password(data: dict, db: db_dependency):
+    email = data.get("email")
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+
+    return await AuthService.forgot_password(email=email, db=db)
+
+
+# @router.get("/reset-password", response_class=HTMLResponse)
+# async def reset_password_page(token: str):
+#     return f"""
+#     <html>
+#         <body>
+#             <h2>Reset Password</h2>
+#             <form method="POST" action="/auth/reset-password">
+#                 <input type="hidden" name="token" value="{token}" />
+#
+#                 <label>New Password</label><br/>
+#                 <input type="password" name="password" required /><br/><br/>
+#
+#                 <label>Confirm Password</label><br/>
+#                 <input type="password" name="confirm_password" required /><br/><br/>
+#
+#                 <button type="submit">Change Password</button>
+#             </form>
+#         </body>
+#     </html>
+#     """
+
+@router.post("/reset-password")
+async def reset_password_api(
+    data: dict,
+    db: Session = Depends(get_db)
+):
+    token = data.get("token")
+    password = data.get("password")
+    confirm_password = data.get("confirm_password")
+
+    if not token or not password or not confirm_password:
+        raise HTTPException(status_code=400, detail="All fields are required")
+
+    if password != confirm_password:
+        raise HTTPException(status_code=400, detail="Passwords do not match")
+
+    await AuthService.reset_password(token, password, db)
+
+    return {"message": "Password reset successful"}
 

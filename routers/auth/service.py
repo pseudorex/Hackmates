@@ -1,24 +1,23 @@
 import json
 import uuid
-import cloudinary
-import cloudinary.uploader
 
 from fastapi import HTTPException, Request
-from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 from datetime import timedelta
 from fastapi.security import OAuth2PasswordRequestForm
+from starlette.responses import HTMLResponse
 
 from models import Users
 from redis_client import redis_client
 from oauth_config import oauth
+from .config import REDIRECT_URI
 
 from .hashing import Hash
-from .jwt_utils import create_access_token
+from .jwt_utils import create_access_token, decode_access_token
 from .email_service import EmailService
-from .config import REDIRECT_URI, SECRET_KEY, ALGORITHM
-from jose import jwt
+import random
 
+from .oauth2 import get_current_user
 
 
 class AuthService:
@@ -32,7 +31,7 @@ class AuthService:
 
         user = Users(
             email=req.email,
-            username="Hello",
+            username=None,
             first_name=req.firstName,
             last_name=req.lastName,
             hashed_password=Hash.hash(req.password),
@@ -44,98 +43,90 @@ class AuthService:
         db.commit()
         db.refresh(user)
 
-        # Email verification
-        EmailService.send_verification(user)
+        # 🔐 Generate OTP
+        otp = str(random.randint(100000, 999999))
 
-        return {"message": "User created successfully! Please verify your email."}
+        # 🧠 Store OTP in Redis (5 minutes)
+        redis_client.set(
+            f"email_otp:{user.email}",
+            otp,
+            ex=300
+        )
+
+        EmailService.send_otp(user.email, otp)
+
+        return {
+            "message": "OTP sent to email",
+            "email": user.email
+        }
 
     # ------------------------ LOGIN (USERNAME + PASSWORD) ------------------------
     @staticmethod
     async def login(form_data: OAuth2PasswordRequestForm, db: Session):
-        user = db.query(Users).filter(Users.username == form_data.username).first()
+        user = db.query(Users).filter(Users.email == form_data.username).first()
 
-        if not user or not Hash.verify(form_data.password, user.hashed_password):
-            raise HTTPException(status_code=401, detail="Invalid username or password")
+        if not user or not user.hashed_password:
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+
+        if not Hash.verify(form_data.password, user.hashed_password):
+            raise HTTPException(status_code=401, detail="Invalid email or password")
 
         if not user.is_verified:
             raise HTTPException(status_code=403, detail="Please verify your email first.")
 
+        if not user.username:
+            raise HTTPException(
+                status_code=403,
+                detail="Complete signup step 2 first"
+            )
+
         token = create_access_token(
-            username=user.username,
+            email=user.email,  # 👈 use email in JWT
             user_id=user.id,
             expires_delta=timedelta(minutes=30)
         )
 
-        session_token = str(uuid.uuid4())
-        redis_client.set(f"user_token:{session_token}", token, ex=60)
+        # session_token = str(uuid.uuid4())
+        # redis_client.set(f"user_token:{session_token}", token, ex=60)
 
-        return {"access_token": session_token, "token_type": "redis"}
+        return {
+            "access_token": token,  # JWT
+            "token_type": "bearer"
+        }
 
-    # ------------------------ VERIFY EMAIL ------------------------
+    # ------------------------ VERIFY OTP ------------------------
     @staticmethod
-    async def verify_email(token: str, db: Session):
-        try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-            email = payload.get("sub")
+    async def verify_otp(email: str, otp: str, db: Session):
 
-            if not email:
-                raise HTTPException(status_code=400, detail="Invalid token")
+        stored_otp = redis_client.get(f"email_otp:{email}")
 
-            user = db.query(Users).filter(Users.email == email).first()
-            if not user:
-                raise HTTPException(status_code=404, detail="User not found")
+        if not stored_otp:
+            raise HTTPException(status_code=400, detail="OTP expired or invalid")
 
-            # 🔐 Already verified guard
-            if user.is_verified:
-                deep_link = "hackmates://verified?already=true"
-                return HTMLResponse(
-                    f"""
-                    <html>
-                      <head>
-                        <meta http-equiv="refresh" content="0;url={deep_link}">
-                      </head>
-                      <body>
-                        <p>Email already verified. Redirecting…</p>
-                      </body>
-                    </html>
-                    """
-                )
+        if stored_otp != otp:
+            raise HTTPException(status_code=400, detail="Incorrect OTP")
 
-            # ✅ Mark verified
-            user.is_verified = True
-            db.commit()
+        user = db.query(Users).filter(Users.email == email).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
 
-            # Create JWT
-            access_token = create_access_token(
-                username=user.username,
-                user_id=user.id,
-                expires_delta=timedelta(minutes=30)
-            )
+        user.is_verified = True
+        db.commit()
 
-            # Store in Redis
-            session_token = str(uuid.uuid4())
-            redis_client.set(f"user_token:{session_token}", access_token, ex=300)
+        redis_client.delete(f"email_otp:{email}")
 
-            # 🔥 Redirect to Flutter Signup Step-2
-            deep_link = f"hackmates://verified?token={session_token}"
+        access_token = create_access_token(
+            email=user.email,
+            user_id=user.id,
+            expires_delta=timedelta(minutes=120)
+        )
 
-            return HTMLResponse(
-                f"""
-                <html>
-                  <head>
-                    <meta http-equiv="refresh" content="0;url={deep_link}">
-                  </head>
-                  <body>
-                    <p>Email verified. Redirecting back to app…</p>
-                  </body>
-                </html>
-                """
-            )
 
-        except jwt.ExpiredSignatureError:
-            raise HTTPException(status_code=400, detail="Verification link expired")
-        except jwt.JWTError:
-            raise HTTPException(status_code=400, detail="Invalid token")
+        return {
+            "token": access_token,
+            "token_type": "bearer",
+            "expires_in": 7200
+        }
 
     # ------------------------ GOOGLE LOGIN ------------------------
     @staticmethod
@@ -156,13 +147,17 @@ class AuthService:
         # -------- Detect provider --------
         is_google = "google" in str(request.url)
 
+        email = None
+        full_name = None
+        picture_url = None
+
         if is_google:
             provider = oauth.create_client("google")
             token = await provider.authorize_access_token(request)
             user_info = token.get("userinfo")
 
             email = user_info["email"]
-            name = user_info["name"]
+            full_name = user_info.get("name", "")
             picture_url = user_info.get("picture")
 
         else:
@@ -173,42 +168,50 @@ class AuthService:
             github_email = await provider.get("user/emails", token=token)
 
             email = github_email.json()[0]["email"]
-            name = github_user.json()["login"]
+            full_name = github_user.json().get("name") or github_user.json().get("login")
             picture_url = github_user.json().get("avatar_url")
 
-        # -------- Cloudinary upload --------
-        cloud_image_url = None
-        if picture_url:
-            try:
-                upload = cloudinary.uploader.upload(picture_url)
-                cloud_image_url = upload["secure_url"]
-            except:
-                pass
+        # -------- Split first & last name --------
+        first_name = ""
+        last_name = ""
+
+        if full_name:
+            name_parts = full_name.strip().split()
+            first_name = name_parts[0]
+            last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""
 
         # -------- Create or update user --------
         user = db.query(Users).filter(Users.email == email).first()
+
         if not user:
             user = Users(
                 email=email,
-                username=name,
-                first_name=name,
-                last_name="",
-                hashed_password=None,
+                username=None,  # ✅ username is NULL
+                first_name=first_name,
+                last_name=last_name,
+                hashed_password=None,  # OAuth users don’t have passwords
                 is_active=True,
                 is_verified=True,
-                profile_image=cloud_image_url
+                profile_image=picture_url
             )
             db.add(user)
             db.commit()
             db.refresh(user)
         else:
-            if cloud_image_url and user.profile_image != cloud_image_url:
-                user.profile_image = cloud_image_url
+            updated = False
+            if picture_url and user.profile_image != picture_url:
+                user.profile_image = picture_url
+                updated = True
+            if not user.first_name:
+                user.first_name = first_name
+                user.last_name = last_name
+                updated = True
+            if updated:
                 db.commit()
 
         # -------- Create JWT --------
         jwt_token = create_access_token(
-            username=user.username,
+            email=user.email,
             user_id=user.id,
             expires_delta=timedelta(minutes=30)
         )
@@ -217,7 +220,7 @@ class AuthService:
 
         user_dict = {
             "id": user.id,
-            "name": user.username,
+            "name": user.first_name,
             "email": user.email,
             "photoUrl": user.profile_image
         }
@@ -228,22 +231,89 @@ class AuthService:
         # -------- Redirect to Flutter deep link --------
         deep_link = f"hackmates://oauth/callback?key={session_key}"
 
-        html_page = f"""
+        return HTMLResponse(
+            content=f"""
             <html>
                 <body>
                     <script>
-                        // This will redirect back to Flutter app immediately
                         window.location.href = "{deep_link}";
                     </script>
                     <p>Redirecting back to app...</p>
                 </body>
             </html>
             """
+        )
 
-        return HTMLResponse(content=html_page)
     # ------------------------ LOGOUT ------------------------
     @staticmethod
     async def logout(current_user):
         session_token = current_user["session_token"]
         redis_client.delete(f"user_token:{session_token}")
         return {"message": "Logged out successfully"}
+
+    @staticmethod
+    async def resend_otp(email: str, db: Session):
+
+        user = db.query(Users).filter(Users.email == email).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if user.is_verified:
+            raise HTTPException(status_code=400, detail="Email already verified")
+
+        otp = str(random.randint(100000, 999999))
+
+        redis_client.set(
+            f"email_otp:{email}",
+            otp,
+            ex=300
+        )
+
+        EmailService.send_otp(email, otp)
+
+        return {"message": "OTP resent successfully"}
+
+
+
+    @staticmethod
+    async def forgot_password(email: str, db: Session):
+        user = db.query(Users).filter(Users.email == email).first()
+
+        # Security best practice: don't reveal if email exists
+        if not user:
+            return {"message": "If the email exists, a reset link has been sent"}
+
+        reset_token = create_access_token(
+            email=user.email,
+            user_id=user.id,
+            expires_delta=timedelta(minutes=15)
+        )
+
+        reset_link = f"https://uncookable-annelle-combatable.ngrok-free.dev/auth/reset-password?token={reset_token}"
+
+        EmailService.send_password_reset(user.email, reset_link)
+
+        return {"message": "Password reset link sent"}
+
+    @staticmethod
+    async def reset_password(token: str, new_password: str, db: Session):
+        try:
+            payload = decode_access_token(token)
+            user_id = payload["user_id"]
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid or expired token")
+
+        user = db.query(Users).filter(Users.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        user.hashed_password = Hash.hash(new_password)
+        db.commit()
+
+        redis_client.delete(f"email_otp:{user.email}")
+
+        return {"message": "Password updated successfully"}
+
+
+
+

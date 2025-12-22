@@ -1,14 +1,15 @@
 import json
 import uuid
 import random
+from typing import Optional
 
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Request, UploadFile
 from sqlalchemy.orm import Session
 from datetime import timedelta
 from fastapi.security import OAuth2PasswordRequestForm
 from starlette.responses import HTMLResponse
 
-from models import Users
+from models import Users, Skills
 from redis_client import redis_client
 from oauth_config import oauth
 from .config import REDIRECT_URI
@@ -16,6 +17,8 @@ from .config import REDIRECT_URI
 from .hashing import Hash
 from .jwt_utils import create_access_token, decode_access_token
 from .email_service import EmailService
+from .schemas import CompleteProfileRequest
+from cloudinary.uploader import upload
 
 
 class AuthService:
@@ -30,8 +33,8 @@ class AuthService:
         user = Users(
             email=req.email,
             username=None,
-            first_name=req.first_name,
-            last_name=req.last_name,
+            first_name=req.firstName,
+            last_name=req.lastName,
             hashed_password=Hash.hash(req.password),
             is_active=True,
             is_verified=False,
@@ -249,3 +252,92 @@ class AuthService:
         db.commit()
 
         return {"message": "Password updated successfully"}
+
+    @staticmethod
+    async def get_oauth_jwt(key: str):
+        jwt_token = redis_client.get(f"user_token:{key}")
+        user_data = redis_client.get(f"user_data:{key}")
+
+        if not jwt_token or not user_data:
+            raise HTTPException(status_code=400, detail="Invalid or expired OAuth key")
+
+        user_data = json.loads(user_data)
+
+        redis_client.delete(f"user_token:{key}")
+        redis_client.delete(f"user_data:{key}")
+
+        return {
+            "token": jwt_token,
+            "tokenType": "Bearer",
+            "expiresIn": 3600,
+            "user": user_data
+        }
+
+    @staticmethod
+    async def complete_profile(
+            bio: Optional[str],
+            interests: Optional[str],
+            profilePhoto: Optional[UploadFile],
+            db: Session,
+            current_user: dict,
+    ):
+
+        # ---- Parse skills safely ----
+        try:
+            skills_list = json.loads(interests) if interests else []
+        except json.JSONDecodeError:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid interests format"
+            )
+
+        profile = CompleteProfileRequest(
+            bio=bio,
+            skills=skills_list
+        )
+
+        # ---- Fetch user ----
+        user = db.query(Users).filter(
+            Users.id == current_user["user_id"]
+        ).first()
+
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # ---- Update bio ----
+        user.bio = profile.bio
+
+        # ---- Handle skills ----
+        skill_objects = []
+        for skill_name in profile.skills:
+            skill = db.query(Skills).filter(
+                Skills.name == skill_name.strip().lower()
+            ).first()
+
+            if not skill:
+                skill = Skills(name=skill_name)
+                db.add(skill)
+                db.flush()
+
+            skill_objects.append(skill)
+
+        user.skills = skill_objects
+
+        # ---- Upload profile photo ----
+        if profilePhoto:
+            try:
+                result = upload(profilePhoto.file)
+                user.profile_image = result.get("secure_url")
+            except Exception:
+                raise HTTPException(status_code=500, detail="Image upload failed")
+
+        db.commit()
+        db.refresh(user)
+
+        return {
+            "message": "Profile completed successfully",
+            "bio": user.bio,
+            "skills": [s.name for s in user.skills],
+            "profile_image": user.profile_image,
+        }
+

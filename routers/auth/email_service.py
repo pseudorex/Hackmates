@@ -4,7 +4,6 @@ from routers.email_utils import (
 )
 
 class EmailService:
-    print("email_utils loaded")
     @staticmethod
     def send_otp(email: str, otp: str):
         send_verification_email(email, otp)

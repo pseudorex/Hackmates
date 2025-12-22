@@ -6,13 +6,10 @@ from .config import SECRET_KEY, ALGORITHM
 
 def create_access_token(email: str, user_id: int, expires_delta: timedelta):
     payload = {
-        "sub": email,
-        "user_id": user_id
+        "email": email,
+        "user_id": user_id,
+        "exp": datetime.utcnow() + expires_delta
     }
-
-    expire = datetime.now(timezone.utc) + expires_delta
-    payload.update({"exp": expire})
-
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 

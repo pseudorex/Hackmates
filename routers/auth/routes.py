@@ -3,22 +3,14 @@ from fastapi import (
     Form, File, UploadFile
 )
 from sqlalchemy.orm import Session
-from typing import Annotated
+from typing import Annotated, Optional
 from fastapi.security import OAuth2PasswordRequestForm
-import json
-
-from starlette.responses import HTMLResponse
-
-from redis_client import redis_client
 from database import SessionLocal
-from models import Users, Skills
-from cloudinary.uploader import upload
 
 from .schemas import (
     CreateUserRequest,
     Token,
     VerifyOtpRequest,
-    CompleteProfileRequest
 )
 from .oauth2 import get_current_user
 from .service import AuthService
@@ -74,23 +66,7 @@ async def logout_route(current_user=Depends(get_current_user)):
 # ---------------- GET JWT AFTER OAUTH ----------------
 @router.get("/getJwt")
 async def get_oauth_jwt(key: str):
-    jwt_token = redis_client.get(f"user_token:{key}")
-    user_data = redis_client.get(f"user_data:{key}")
-
-    if not jwt_token or not user_data:
-        raise HTTPException(status_code=400, detail="Invalid or expired OAuth key")
-
-    user_data = json.loads(user_data)
-
-    redis_client.delete(f"user_token:{key}")
-    redis_client.delete(f"user_data:{key}")
-
-    return {
-        "token": jwt_token,
-        "tokenType": "Bearer",
-        "expiresIn": 3600,
-        "user": user_data
-    }
+    return await AuthService.get_oauth_jwt(key)
 
 
 @router.post("/resend-otp")
@@ -113,49 +89,15 @@ async def verify_otp(data: VerifyOtpRequest, db: db_dependency):
 # ---------------- COMPLETE PROFILE ----------------
 @router.post("/complete-profile")
 async def complete_profile(
-    bio: str = Form(None),
-    interests: str = Form(None),
-    profilePhoto: UploadFile | None = File(None),
+    bio: Optional[str] = Form(None),
+    interests: Optional[str] = Form(None),
+    profilePhoto: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    skills_list = json.loads(interests) if interests else []
-
-    profile = CompleteProfileRequest(
-        bio=bio,
-        skills=skills_list
+    return await AuthService.complete_profile(
+        bio, interests, profilePhoto, db, current_user
     )
-
-    user = db.query(Users).filter(Users.id == current_user["id"]).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    user.bio = profile.bio
-
-    skill_objects = []
-    for skill_name in profile.skills:
-        skill = db.query(Skills).filter(Skills.name == skill_name).first()
-        if not skill:
-            skill = Skills(name=skill_name)
-            db.add(skill)
-            db.flush()
-        skill_objects.append(skill)
-
-    user.skills = skill_objects
-
-    if profilePhoto:
-        result = upload(profilePhoto.file)
-        user.profile_image = result.get("secure_url")
-
-    db.commit()
-    db.refresh(user)
-
-    return {
-        "message": "Profile completed successfully",
-        "bio": user.bio,
-        "skills": [s.name for s in user.skills],
-        "profile_image": user.profile_image,
-    }
 
 
 # ---------------- FORGOT / RESET PASSWORD ----------------

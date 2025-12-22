@@ -4,8 +4,8 @@ from pydantic import BaseModel, Field
 
 class CreateUserRequest(BaseModel):
     email: str
-    first_name: str
-    last_name: str
+    firstName: str
+    lastName: str
     password: str
 
 

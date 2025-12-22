@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
 from jose import jwt, JWTError
-from .config import SECRET_KEY, ALGORITHM
+from app.core.config import SECRET_KEY, ALGORITHM
 
 
 def create_access_token(email: str, user_id: int, expires_delta: timedelta):

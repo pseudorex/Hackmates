@@ -1,7 +1,7 @@
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from fastapi import HTTPException, status, Depends
-from .config import SECRET_KEY, ALGORITHM
+from app.core.config import SECRET_KEY, ALGORITHM
 
 oauth2_bearer = OAuth2PasswordBearer(tokenUrl="auth/login")
 

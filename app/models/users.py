@@ -1,15 +1,9 @@
-from database import Base
+from app.database import Base
 from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Table
 from sqlalchemy.orm import relationship
 
+from app.models.user_skills import user_skills
 
-user_skills = Table(
-    "user_skills",
-    Base.metadata,
-    Column("user_id", Integer, ForeignKey("users.id")),
-    Column("skill_id", Integer, ForeignKey("skills.id")),
-
-)
 
 class Users(Base):
     __tablename__ = 'users'
@@ -30,16 +24,4 @@ class Users(Base):
         secondary=user_skills,
         back_populates="users",
         lazy="selectin"
-    )
-
-class Skills(Base):
-    __tablename__ = "skills"
-
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True)
-
-    users = relationship(
-        "Users",
-        secondary=user_skills,
-        back_populates="skills"
     )

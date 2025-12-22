@@ -1,9 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
-from models import Base
-from database import engine
-from routers.auth.routes import router
+
+from app.routers.auth import router
+from app.database import engine, Base
 from dotenv import load_dotenv
 
 load_dotenv()

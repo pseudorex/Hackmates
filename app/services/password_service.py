@@ -22,7 +22,8 @@ class PasswordService:
             expires_delta=timedelta(minutes=15)
         )
 
-        EmailService.send_password_reset(user.email, token)
+        reset_link = f"http://localhost:8000/reset-password?token={token}"
+        EmailService.send_password_reset(user.email, reset_link)
         return {"message": "Reset link sent"}
 
     @staticmethod

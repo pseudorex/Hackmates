@@ -4,12 +4,19 @@ from jose import jwt, JWTError
 from app.core.config import SECRET_KEY, ALGORITHM
 
 
-def create_access_token(email: str, user_id: int, expires_delta: timedelta):
+def create_access_token(
+    email: str,
+    user_id: int,
+    expires_delta: timedelta
+):
+    expire = datetime.now(timezone.utc) + expires_delta
+
     payload = {
         "email": email,
         "user_id": user_id,
-        "exp": datetime.utcnow() + expires_delta
+        "exp": expire
     }
+
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 

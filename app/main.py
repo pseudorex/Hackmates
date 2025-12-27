@@ -1,8 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
-
+from app.routers.posts import router as post_router
 from app.routers.auth import router
+from app.routers.feed import router as feed_router
 from app.database import engine, Base
 from dotenv import load_dotenv
 
@@ -40,3 +41,5 @@ async def check_healthy():
 
 # ----- ROUTES -----
 app.include_router(router)
+app.include_router(post_router)
+app.include_router(feed_router)

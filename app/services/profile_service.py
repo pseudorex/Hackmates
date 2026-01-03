@@ -7,6 +7,7 @@ from cloudinary.uploader import upload
 from app.models.users import Users
 from app.models.skills import Skills
 from app.schemas.profile_schema import CompleteProfileRequest
+from app.services.moderation_service import ModerationService
 
 
 class ProfileService:
@@ -19,6 +20,21 @@ class ProfileService:
         db: Session,
         current_user: dict
     ):
+
+        text_to_check = f"{bio} {interests}"
+
+        scores = ModerationService.analyze_text(text_to_check)
+
+        if not ModerationService.is_allowed(scores):
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": "Bio or Skills contain malicious or toxic content",
+                    "moderation score": scores
+                }
+            )
+
+
         skills = json.loads(interests) if interests else []
 
         profile = CompleteProfileRequest(bio=bio, skills=skills)

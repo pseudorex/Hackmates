@@ -7,3 +7,7 @@ fastapienv/
 
 # Environment variables
 .env
+
+# IDEs
+.idea/
+

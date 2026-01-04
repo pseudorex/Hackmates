@@ -7,9 +7,10 @@ from starlette.responses import HTMLResponse
 from app.models.users import Users
 from app.redis_client import redis_client
 from app.core.oauth_config import oauth
-from app.core.config import REDIRECT_URI
+from app.core.config import settings
 from app.core.jwt_utils import create_access_token
 
+REDIRECT_URI = settings.REDIRECT_URI
 
 class OAuthService:
 

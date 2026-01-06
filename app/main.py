@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
+
+from app.core.config import Settings, settings
 from app.routers.posts import router as post_router
 from app.routers.auth import router
 from app.routers.feed import router as feed_router
@@ -30,7 +32,7 @@ app.add_middleware(
 )
 
 # ----- SESSION MIDDLEWARE (OAuth) -----
-app.add_middleware(SessionMiddleware, secret_key="fssvsdvadvdv")
+app.add_middleware(SessionMiddleware, secret_key = settings.SECRET_KEY)
 
 # ----- CREATE DATABASE TABLES -----
 Base.metadata.create_all(bind=engine)

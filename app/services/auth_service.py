@@ -81,7 +81,7 @@ class AuthService:
             user_id=user.id,
             expires_delta=timedelta(minutes=120)
         )
-
+        print(token)
         return {"token": token, "token_type": "bearer"}
 
     @staticmethod

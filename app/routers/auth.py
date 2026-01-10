@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordRequestForm
 
 from app.database import get_db
+from app.models import Users
 from app.schemas.auth_schema import CreateUserRequest, VerifyOtpRequest
 from app.schemas.token_schema import Token
 
@@ -126,3 +127,28 @@ async def reset_password(
         new_password=data["password"],
         db=db
     )
+
+@router.get("/me")
+def get_me(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    user = db.query(Users).filter(
+        Users.id == current_user["user_id"]
+    ).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return {
+        "user": {
+            "id": user.id,
+            "firstName": user.first_name,
+            "lastName": user.last_name,
+            "email": user.email,
+            "photoUrl": user.profile_image,
+            "bio": user.bio,
+            "interests": [skill.name for skill in user.skills],
+            "isVerified": user.is_verified, # or True if verified by OTP
+        }
+    }

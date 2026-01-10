@@ -6,3 +6,14 @@ class CompleteProfileRequest(BaseModel):
     username: Optional[str] = None
     bio: Optional[str] = None
     skills: List[str] = Field(default_factory=list)
+
+class ProfileResponse(BaseModel):
+    id: int
+    username: str
+    bio: Optional[str]
+    skills: list[str]
+    profile_image: Optional[str]
+
+    class Config:
+        from_attributes = True
+

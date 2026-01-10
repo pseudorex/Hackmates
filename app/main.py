@@ -2,25 +2,19 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.core.config import Settings, settings
+from app.core.config import settings
 from app.routers.posts import router as post_router
 from app.routers.auth import router
 from app.routers.feed import router as feed_router
 from app.routers.search import router as search_router
-from app.database import engine, Base
-from dotenv import load_dotenv
-
-load_dotenv()
+from app.routers.profile import router as profile_router
 
 app = FastAPI()
 
 # ----- CORS CONFIG -----
 origins = [
-    "*"   # Allow all origins (for testing)
-    # Later, you can restrict:
-    # "http://localhost:3000",
-    # "http://localhost:5173",
-    # "https://your-flutter-web-app.com",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000"
 ]
 
 app.add_middleware(
@@ -32,10 +26,12 @@ app.add_middleware(
 )
 
 # ----- SESSION MIDDLEWARE (OAuth) -----
-app.add_middleware(SessionMiddleware, secret_key = settings.SECRET_KEY)
-
-# ----- CREATE DATABASE TABLES -----
-Base.metadata.create_all(bind=engine)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.SECRET_KEY,
+    same_site="lax",
+    https_only=False
+)
 
 # ----- HEALTH CHECK -----
 @app.get("/healthy")
@@ -47,3 +43,4 @@ app.include_router(router)
 app.include_router(post_router)
 app.include_router(feed_router)
 app.include_router(search_router)
+app.include_router(profile_router)

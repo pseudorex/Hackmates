@@ -19,15 +19,15 @@ async def create_post(
     description: str = Form(...),
     category: str = Form(...),
     duration: str = Form(None),
-    photo: UploadFile = File(None),
+    images: UploadFile = File(None),
 
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
     photo_url = None
 
-    if photo:
-        result = upload_image(photo.file)
+    if images:
+        result = upload_image(images.file)
         photo_url = result.get("secure_url")
 
     post = PostService.create_post(

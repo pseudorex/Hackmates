@@ -1,11 +1,11 @@
 # oauth_config.py
-from authlib.integrations.starlette_client import OAuth
+from authlib.integrations.starlette_client import OAuth as StarletteOAuth
 from dotenv import load_dotenv
 import os
 
 load_dotenv()
 
-oauth = OAuth()
+oauth = StarletteOAuth()
 
 # Google OAuth config
 oauth.register(

@@ -70,9 +70,26 @@ async def google_login(request: Request):
     return await OAuthService.login("google", request)
 
 
+@router.get("/google/callback")
+async def google_callback(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    return await OAuthService.callback("google", request, db)
+
+
+
 @router.get("/github")
 async def github_login(request: Request):
     return await OAuthService.login("github", request)
+
+@router.get("/github/callback")
+async def github_callback(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    return await OAuthService.callback("github", request, db)
+
 
 
 @router.api_route("/callback", methods=["GET", "POST"])

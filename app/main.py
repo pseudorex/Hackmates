@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
-
 from app.core.config import settings
 from app.routers.posts import router as post_router
 from app.routers.auth import router
@@ -14,7 +13,8 @@ app = FastAPI()
 # ----- CORS CONFIG -----
 origins = [
     "http://localhost:8000",
-    "http://127.0.0.1:8000"
+    "http://127.0.0.1:8000",
+    "https://uncookable-annelle-combatable.ngrok-free.dev"
 ]
 
 app.add_middleware(
@@ -26,12 +26,16 @@ app.add_middleware(
 )
 
 # ----- SESSION MIDDLEWARE (OAuth) -----
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=settings.SECRET_KEY,
-    same_site="lax",
-    https_only=False
-)
+# app.add_middleware(
+#     SessionMiddleware,
+#     secret_key=settings.SECRET_KEY,
+#     session_cookie="hackmates_session",
+#     same_site="none",
+#     https_only=True
+# )
+
+
+
 
 # ----- HEALTH CHECK -----
 @app.get("/healthy")

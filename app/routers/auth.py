@@ -145,6 +145,8 @@ async def reset_password(
         db=db
     )
 
+
+# Frontend needs it
 @router.get("/me")
 def get_me(
     db: Session = Depends(get_db),

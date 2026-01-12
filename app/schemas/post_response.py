@@ -15,3 +15,15 @@ class PostResponseOut(BaseModel):
 
 class UpdateResponseStatusSchema(BaseModel):
     status: str  # accepted | rejected
+
+class MyPostResponse(BaseModel):
+    id: int
+    title: str
+    description: str
+    category: str
+    duration: str | None
+    photo: str | None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

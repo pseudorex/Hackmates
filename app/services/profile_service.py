@@ -1,9 +1,11 @@
 import json
 from typing import Optional
 from fastapi import HTTPException, UploadFile
+from sqlalchemy import desc
 from sqlalchemy.orm import Session
 from cloudinary.uploader import upload
 
+from app.models import Post
 from app.models.users import Users
 from app.models.skills import Skills
 from app.schemas.profile_schema import CompleteProfileRequest

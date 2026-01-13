@@ -2,8 +2,10 @@ from fastapi import HTTPException
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
+from app.models.post_image import PostImage
 from app.models.posts import Post
 from app.models.post_response import PostResponse
+from app.schemas.post_response import MyPostResponse
 from app.services.moderation_service import ModerationService
 
 
@@ -17,7 +19,7 @@ class PostService:
         description: str,
         category: str,
         duration: str | None,
-        photo_url: str | None,
+        photo_url: list[str] | None,
         created_by: int
     ) -> Post:
 
@@ -38,14 +40,17 @@ class PostService:
             description=description,
             category=category,
             duration=duration,
-            photo=photo_url,
             created_by=created_by
         )
 
         db.add(post)
+        db.flush()
+
+        for url in photo_url:
+            db.add(PostImage(image_url=url, post_id=post.id))
+
         db.commit()
         db.refresh(post)
-
         return post
 
     # Quick Apply
@@ -123,14 +128,16 @@ class PostService:
         }
 
     # My Posts
+    from app.schemas.post_response import MyPostResponse
+
     @staticmethod
     def get_my_posts(
-        db: Session,
-        user_id: int,
-        limit: int = 10,
-        offset: int = 0
+            db: Session,
+            user_id: int,
+            limit: int = 10,
+            offset: int = 0
     ):
-        return (
+        posts = (
             db.query(Post)
             .filter(Post.created_by == user_id)
             .order_by(desc(Post.created_at))
@@ -138,3 +145,17 @@ class PostService:
             .limit(limit)
             .all()
         )
+
+        return [
+            MyPostResponse(
+                id=post.id,
+                title=post.title,
+                description=post.description,
+                category=post.category,
+                duration=post.duration,
+                images=[img.image_url for img in post.images],
+                created_at=post.created_at
+            )
+            for post in posts
+        ]
+

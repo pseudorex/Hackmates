@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 class CreatePostRequest(BaseModel):
@@ -15,7 +15,7 @@ class PostResponse(BaseModel):
     description: str
     category: str
     duration: Optional[str]
-    photo: Optional[str]
+    images: List[str]
     created_at: datetime
     is_active: bool
 

@@ -12,7 +12,7 @@ class FeedService:
         cursor: Optional[datetime],
         limit: int,
         db: Session,
-        current_user: dict
+        current_user: dict,
     ):
         query = db.query(Post).filter(Post.is_active.is_(True))
 
@@ -40,7 +40,9 @@ class FeedService:
                 "description": post.description,
                 "category": post.category,
                 "duration": post.duration,
-                "photo": post.photo,
+                "images": [
+                    image.image_url for image in post.images
+                ],
                 "creator": {
                     "id": post.creator.id if post.creator else None,
                     "username": post.creator.username if post.creator else None,

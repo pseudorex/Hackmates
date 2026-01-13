@@ -22,8 +22,10 @@ class MyPostResponse(BaseModel):
     description: str
     category: str
     duration: str | None
-    photo: str | None
+    images: list[str] | None
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+

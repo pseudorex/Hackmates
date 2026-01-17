@@ -1,6 +1,6 @@
 from fastapi import HTTPException
 from sqlalchemy import desc
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models.post_image import PostImage
 from app.models.posts import Post
@@ -10,17 +10,16 @@ from app.services.moderation_service import ModerationService
 
 
 class PostService:
-
     @staticmethod
     def create_post(
-        db: Session,
-        *,
-        title: str,
-        description: str,
-        category: str,
-        duration: str | None,
-        photo_url: list[str] | None,
-        created_by: int
+            db: Session,
+            *,
+            title: str,
+            description: str,
+            category: str,
+            duration: str | None,
+            photo_url: list[str] | None,
+            created_by: int
     ) -> Post:
 
         text_to_check = f"{title} {description}"
@@ -44,13 +43,27 @@ class PostService:
         )
 
         db.add(post)
-        db.flush()
+        db.flush()  # get post.id
 
-        for url in photo_url:
-            db.add(PostImage(image_url=url, post_id=post.id))
+        if photo_url:
+            db.add_all([
+                PostImage(image_url=url, post_id=post.id)
+                for url in photo_url
+            ])
 
         db.commit()
-        db.refresh(post)
+
+        # Reload with relationships in ONE query
+        post = (
+            db.query(Post)
+            .options(
+                joinedload(Post.creator),
+                joinedload(Post.images)
+            )
+            .filter(Post.id == post.id)
+            .first()
+        )
+
         return post
 
     # Quick Apply

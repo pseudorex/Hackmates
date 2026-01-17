@@ -42,7 +42,20 @@ async def create_post(
 
     return {
         "message": "Post created successfully",
-        "post_id": post.id
+        "post": {
+            "id": post.id,
+            "title": post.title,
+            "description": post.description,
+            "category": post.category,
+            "duration": post.duration,
+            "images": [img.image_url for img in post.images],
+            "creator": {
+                "id": post.creator.id,
+                "username": post.creator.username,
+                "profile_photo": post.creator.profile_image
+            },
+            "created_at": post.created_at
+        }
     }
 
 

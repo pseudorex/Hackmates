@@ -14,7 +14,16 @@ class FeedService:
         db: Session,
         current_user: dict,
     ):
-        query = db.query(Post).filter(Post.is_active.is_(True))
+        from sqlalchemy.orm import joinedload
+
+        query = (
+            db.query(Post)
+            .options(
+                joinedload(Post.creator),  # FIX creator N+1
+                joinedload(Post.images)  # already joined, safe
+            )
+            .filter(Post.is_active == True)
+        )
 
         if cursor:
             query = query.filter(Post.created_at < cursor)

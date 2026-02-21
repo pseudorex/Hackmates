@@ -4,7 +4,7 @@ from fastapi import HTTPException, UploadFile
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 from cloudinary.uploader import upload
-
+import re
 from app.models import Post
 from app.models.users import Users
 from app.models.skills import Skills
@@ -16,18 +16,33 @@ class ProfileService:
 
     @staticmethod
     def _process_skills(skills: list[str], db: Session):
+        cleaned = set()
         skill_objects = []
 
-        for name in skills:
+        for raw in skills:
+            for part in raw.split(","):
+                name = part.strip().lower()
+
+                if not name:
+                    continue
+
+                if not re.fullmatch(r"[a-z0-9 .+-]{2,50}", name):
+                    continue
+
+                cleaned.add(name)
+
+        print("CLEANED SKILLS:", cleaned)
+
+        for name in cleaned:
             skill = db.query(Skills).filter(Skills.name == name).first()
             if not skill:
                 skill = Skills(name=name)
                 db.add(skill)
                 db.flush()
+
             skill_objects.append(skill)
 
         return skill_objects
-
 
     @staticmethod
     async def complete_profile(
@@ -85,7 +100,11 @@ class ProfileService:
 
         return {
             "id": user.id,
-            "username": user.username,
+            # "username": user.username,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "display_name": f"{user.first_name} {user.last_name}",
+            "email": user.email,
             "bio": user.bio,
             "profile_image": user.profile_image,
             "skills": [skill.name for skill in user.skills]
@@ -94,7 +113,7 @@ class ProfileService:
     @staticmethod
     async def update_profile(
             bio: Optional[str],
-            skills: Optional[str],
+            skills: Optional[list[str]],
             profile_image: Optional[UploadFile],
             db: Session,
             current_user: dict
@@ -116,10 +135,13 @@ class ProfileService:
                 )
             user.bio = bio
 
-        # SKILLS UPDATE
         if skills is not None:
-            skill_list = json.loads(skills)
-            user.skills = ProfileService._process_skills(skill_list, db)
+            print("RAW SKILLS:", skills)
+
+            user.skills.clear()
+            db.flush()
+
+            user.skills = ProfileService._process_skills(skills, db)
 
         # IMAGE UPDATE
         if profile_image:
@@ -129,6 +151,7 @@ class ProfileService:
         db.refresh(user)
 
         return {"message": "Profile updated successfully"}
+
 
 
 

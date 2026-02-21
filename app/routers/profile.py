@@ -20,7 +20,7 @@ def my_profile(
 @router.put("/me")
 async def update_profile(
     bio: Optional[str] = Form(None),
-    skills: Optional[str] = Form(None),
+    skills: Optional[list[str]] = Form(None),
     profile_image: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)

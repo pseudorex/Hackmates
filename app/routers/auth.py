@@ -39,6 +39,16 @@ async def login(
 ):
     return await AuthService.login(form_data, db)
 
+# ---------------- REFRESH ----------------
+@router.post("/refresh", response_model=Token)
+async def refresh(
+    data: dict,
+    db: Session = Depends(get_db)
+):
+    return await AuthService.refresh_access_token(
+        data["refresh_token"],
+        db
+    )
 
 # ---------------- OTP ----------------
 @router.post("/verify-otp")

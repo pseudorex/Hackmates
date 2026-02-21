@@ -7,7 +7,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from app.models.users import Users
 from app.redis_client import redis_client
 from app.core.hashing import Hash
-from app.core.jwt_utils import create_access_token
+from app.core.jwt_utils import create_access_token, create_refresh_token, verify_token
 from app.services.email_service import EmailService
 
 
@@ -70,13 +70,24 @@ class AuthService:
         if not user.is_verified:
             raise HTTPException(status_code=403, detail="Email not verified")
 
-        token = create_access_token(
+        access_token = create_access_token(
             email=user.email,
             user_id=user.id,
-            expires_delta=timedelta(minutes=30)
+            expires_delta=timedelta(minutes=1)
         )
 
-        return {"access_token": token, "token_type": "bearer"}
+
+        refresh_token = create_refresh_token(
+            email=user.email,
+            user_id=user.id,
+            expires_delta=timedelta(days=7)
+        )
+
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer"
+        }
 
     @staticmethod
     async def verify_otp(email: str, otp: str, db: Session):
@@ -105,8 +116,15 @@ class AuthService:
             expires_delta=timedelta(minutes=120)
         )
 
+        refresh_token = create_refresh_token(
+            email=user.email,
+            user_id=user.id,
+            expires_delta=timedelta(days=7)
+        )
+
         return {
-            "token": token,
+            "access_token": token,
+            "refresh_token": refresh_token,
             "token_type": "bearer"
         }
 
@@ -135,4 +153,30 @@ class AuthService:
         EmailService.send_otp(email, otp)
 
         return {"message": "OTP resent successfully"}
+
+    @staticmethod
+    async def refresh_access_token(refresh_token: str, db: Session):
+
+        payload = verify_token(refresh_token)
+
+        if payload.get("type") != "refresh":
+            raise HTTPException(status_code=401, detail="Invalid token type")
+
+        user_id = payload.get("user_id")
+
+        user = db.query(Users).filter(Users.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        new_access_token = create_access_token(
+            email=user.email,
+            user_id=user.id,
+            expires_delta=timedelta(minutes=30)
+        )
+
+        return {
+            "access_token": new_access_token,
+            "refresh_token": refresh_token,  # rotation can be added later
+            "token_type": "bearer"
+        }
 

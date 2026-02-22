@@ -96,8 +96,7 @@ class AuthService:
         if not stored_otp:
             raise HTTPException(status_code=400, detail="OTP expired or not found")
 
-        # 🚫 NO decode here
-        if stored_otp != otp:
+        if stored_otp.decode() != otp:
             raise HTTPException(status_code=400, detail="Invalid OTP")
 
         user = db.query(Users).filter(Users.email == email).first()
@@ -157,7 +156,10 @@ class AuthService:
     @staticmethod
     async def refresh_access_token(refresh_token: str, db: Session):
 
-        payload = verify_token(refresh_token)
+        try:
+            payload = verify_token(refresh_token)
+        except Exception:
+            raise HTTPException(status_code=401, detail="Invalid refresh token")
 
         if payload.get("type") != "refresh":
             raise HTTPException(status_code=401, detail="Invalid token type")

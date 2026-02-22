@@ -5,15 +5,12 @@ from app.routers.auth import router
 from app.routers.feed import router as feed_router
 from app.routers.search import router as search_router
 from app.routers.profile import router as profile_router
+from app.core.config import settings
 
 app = FastAPI()
 
 # ----- CORS CONFIG -----
-origins = [
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-    "https://uncookable-annelle-combatable.ngrok-free.dev"
-]
+origins = settings.ALLOWED_ORIGINS.split(",")
 
 app.add_middleware(
     CORSMiddleware,

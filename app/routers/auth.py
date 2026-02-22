@@ -7,7 +7,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 
 from app.database import get_db
 from app.models import Users
-from app.schemas.auth_schema import CreateUserRequest, VerifyOtpRequest
+from app.schemas.auth_schema import CreateUserRequest, VerifyOtpRequest, RefreshRequest
 from app.schemas.token_schema import Token
 
 from app.services.auth_service import AuthService
@@ -42,8 +42,8 @@ async def login(
 # ---------------- REFRESH ----------------
 @router.post("/refresh", response_model=Token)
 async def refresh(
-    data: dict,
-    db: Session = Depends(get_db)
+        data: RefreshRequest,
+        db: Session = Depends(get_db)
 ):
     return await AuthService.refresh_access_token(
         data["refresh_token"],

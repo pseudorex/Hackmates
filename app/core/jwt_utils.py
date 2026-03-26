@@ -1,6 +1,9 @@
 from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
 from jose import jwt, JWTError
+import uuid
+import logging
+
 from app.core.config import settings
 
 
@@ -16,7 +19,7 @@ def create_access_token(
 ):
     expire = datetime.now(timezone.utc) + expires_delta
 
-    print(expires_delta)
+    logging.debug(f"Access token expires_delta: {expires_delta}")
 
     payload = {
         "email": email,
@@ -35,12 +38,13 @@ def create_refresh_token(
     expires_delta: timedelta
 ):
     expire = datetime.now(timezone.utc) + expires_delta
-
+    jti = uuid.uuid4().hex
     payload = {
         "email": email,
         "user_id": user_id,
         "exp": expire,
-        "type": "refresh"
+        "type": "refresh",
+        "jti": jti
     }
 
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)

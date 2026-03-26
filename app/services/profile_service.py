@@ -1,14 +1,12 @@
 import json
 from typing import Optional
 from fastapi import HTTPException, UploadFile
-from sqlalchemy import desc
 from sqlalchemy.orm import Session
 from cloudinary.uploader import upload
 import re
-from app.models import Post
+import logging
 from app.models.users import Users
 from app.models.skills import Skills
-from app.schemas.profile_schema import CompleteProfileRequest
 from app.services.moderation_service import ModerationService
 
 
@@ -31,7 +29,7 @@ class ProfileService:
 
                 cleaned.add(name)
 
-        print("CLEANED SKILLS:", cleaned)
+        logging.debug(f"CLEANED SKILLS: {cleaned}")
 
         for name in cleaned:
             skill = db.query(Skills).filter(Skills.name == name).first()
@@ -64,8 +62,11 @@ class ProfileService:
                     "moderation score": scores
                 }
             )
-
-        skills = json.loads(interests) if interests else []
+        try:
+            skills = json.loads(interests) if interests else []
+        except json.JSONDecodeError:
+            # fallback if frontend sends comma-separated string
+            skills = [i.strip() for i in interests.split(",")] if interests else []
 
         user = db.query(Users).filter(
             Users.id == current_user["user_id"]
@@ -100,7 +101,6 @@ class ProfileService:
 
         return {
             "id": user.id,
-            # "username": user.username,
             "first_name": user.first_name,
             "last_name": user.last_name,
             "display_name": f"{user.first_name} {user.last_name}",
@@ -136,7 +136,7 @@ class ProfileService:
             user.bio = bio
 
         if skills is not None:
-            print("RAW SKILLS:", skills)
+            logging.debug(f"RAW SKILLS: {skills}")
 
             user.skills.clear()
             db.flush()

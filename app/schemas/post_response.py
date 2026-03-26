@@ -2,19 +2,24 @@
 
 from pydantic import BaseModel
 from datetime import datetime
+from enum import Enum
 
+class ResponseStatusEnum(str, Enum):
+    pending = "pending"
+    accepted = "accepted"
+    rejected = "rejected"
 
 class PostResponseOut(BaseModel):
     id: int
     message: str
-    status: str
+    status: ResponseStatusEnum
     created_at: datetime
 
     class Config:
         from_attributes = True
 
 class UpdateResponseStatusSchema(BaseModel):
-    status: str  # accepted | rejected
+    status: ResponseStatusEnum  # accepted | rejected
 
 class MyPostResponse(BaseModel):
     id: int

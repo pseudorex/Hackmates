@@ -14,3 +14,14 @@ class VerifyOtpRequest(BaseModel):
 
 class RefreshRequest(BaseModel):
     refresh_token: str
+
+class ResendOtpRequest(BaseModel):
+    email: EmailStr
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    password: str = Field(..., min_length=6)
+    confirm_password: str = Field(..., min_length=6)

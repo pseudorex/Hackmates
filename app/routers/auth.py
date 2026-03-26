@@ -7,8 +7,9 @@ from fastapi.security import OAuth2PasswordRequestForm
 
 from app.database import get_db
 from app.models import Users
-from app.schemas.auth_schema import CreateUserRequest, VerifyOtpRequest, RefreshRequest
+from app.schemas.auth_schema import CreateUserRequest, VerifyOtpRequest, RefreshRequest, ResendOtpRequest, ForgotPasswordRequest, ResetPasswordRequest
 from app.schemas.token_schema import Token
+from app.core.rate_limiter import RateLimiter
 
 from app.services.auth_service import AuthService
 from app.services.oauth_service import OAuthService
@@ -26,18 +27,20 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 @router.post("/register", status_code=201)
 async def register(
     payload: CreateUserRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _ = Depends(RateLimiter("auth:register", 5, 1))
 ):
-    return await AuthService.create_user(payload, db)
+    return AuthService.create_user(payload, db)
 
 
 # ---------------- LOGIN ----------------
 @router.post("/login", response_model=Token)
 async def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _ = Depends(RateLimiter("auth:login", 5, 1))
 ):
-    return await AuthService.login(form_data, db)
+    return AuthService.login(form_data, db)
 
 # ---------------- REFRESH ----------------
 @router.post("/refresh", response_model=Token)
@@ -45,8 +48,8 @@ async def refresh(
         data: RefreshRequest,
         db: Session = Depends(get_db)
 ):
-    return await AuthService.refresh_access_token(
-        data["refresh_token"],
+    return AuthService.refresh_access_token(
+        data.refresh_token,
         db
     )
 
@@ -54,9 +57,10 @@ async def refresh(
 @router.post("/verify-otp")
 async def verify_otp(
     payload: VerifyOtpRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _ = Depends(RateLimiter("auth:verify_otp", 5, 1))
 ):
-    return await AuthService.verify_otp(
+    return AuthService.verify_otp(
         email=payload.email,
         otp=payload.otp,
         db=db
@@ -65,11 +69,12 @@ async def verify_otp(
 
 @router.post("/resend-otp")
 async def resend_otp(
-    data: dict,
-    db: Session = Depends(get_db)
+    payload: ResendOtpRequest,
+    db: Session = Depends(get_db),
+    _ = Depends(RateLimiter("auth:resend_otp", 3, 1))
 ):
-    return await AuthService.resend_otp(
-        email=data["email"],
+    return AuthService.resend_otp(
+        email=payload.email,
         db=db
     )
 
@@ -132,26 +137,26 @@ async def complete_profile(
 # ---------------- PASSWORD ----------------
 @router.post("/forgot-password")
 async def forgot_password(
-    data: dict,
-    db: Session = Depends(get_db)
+    payload: ForgotPasswordRequest,
+    db: Session = Depends(get_db),
+    _ = Depends(RateLimiter("auth:forgot_pwd", 3, 1))
 ):
     return await PasswordService.forgot_password(
-        email=data["email"],
+        email=payload.email,
         db=db
     )
 
 
 @router.post("/reset-password")
 async def reset_password(
-    data: dict,
-    db: Session = Depends(get_db)
+    payload: ResetPasswordRequest,
+    db: Session = Depends(get_db),
+    _ = Depends(RateLimiter("auth:reset_pwd", 3, 1))
 ):
-    if data["password"] != data["confirm_password"]:
-        raise HTTPException(status_code=400, detail="Passwords do not match")
-
     return await PasswordService.reset_password(
-        token=data["token"],
-        new_password=data["password"],
+        token=payload.token,
+        new_password=payload.password,
+        confirm_password=payload.confirm_password,
         db=db
     )
 
@@ -178,6 +183,6 @@ def get_me(
             "photoUrl": user.profile_image,
             "bio": user.bio,
             "interests": [skill.name for skill in user.skills],
-            "isVerified": user.is_verified, # or True if verified by OTP
+            "isVerified": user.is_verified,
         }
     }

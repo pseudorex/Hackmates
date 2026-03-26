@@ -32,4 +32,11 @@ class RedisRateLimiter:
                 detail="Too many requests."
             )
 
+class RateLimiter:
+    def __init__(self, key_prefix: str, capacity: int, refill_rate: int):
+        self.key_prefix = key_prefix
+        self.capacity = capacity
+        self.refill_rate = refill_rate
 
+    async def __call__(self, request: Request):
+        await RedisRateLimiter.check(request, self.key_prefix, self.capacity, self.refill_rate)

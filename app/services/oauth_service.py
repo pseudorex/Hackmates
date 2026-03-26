@@ -1,4 +1,6 @@
 from urllib.parse import urlencode
+
+from google.auth.exceptions import InvalidValue
 from starlette.responses import RedirectResponse
 from fastapi import Request, HTTPException
 from sqlalchemy.orm import Session
@@ -51,7 +53,7 @@ class OAuthService:
             if not code:
                 raise HTTPException(status_code=400, detail="Missing code")
 
-            # 1️⃣ Exchange code → token
+            # Exchange code → token
             async with httpx.AsyncClient() as client:
                 token_res = await client.post(
                     "https://oauth2.googleapis.com/token",
@@ -69,12 +71,19 @@ class OAuthService:
             if "id_token" not in token_data:
                 raise HTTPException(status_code=400, detail="Invalid Google token")
 
-            # 2️⃣ Verify ID token
-            idinfo = id_token.verify_oauth2_token(
-                token_data["id_token"],
-                google_requests.Request(),
-                settings.GOOGLE_CLIENT_ID
-            )
+            # Verify ID token
+            try:
+                idinfo = id_token.verify_oauth2_token(
+                    token_data["id_token"],
+                    google_requests.Request(),
+                    settings.GOOGLE_CLIENT_ID,
+                    clock_skew_in_seconds=5
+                )
+            except InvalidValue:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid or expired Google token. Try again."
+                )
 
             email = idinfo["email"]
             full_name = idinfo.get("name", "")

@@ -100,7 +100,7 @@ class PostService:
 
     # Get Responses
     @staticmethod
-    def get_post_responses(db: Session, post_id: int, user_id: int):
+    def get_post_responses(db: Session, post_id: int, user_id: int, limit: int = 10, offset: int = 0):
         post = db.query(Post).filter(Post.id == post_id).first()
 
         if not post or post.created_by != user_id:
@@ -108,7 +108,7 @@ class PostService:
 
         return db.query(PostResponse).filter(
             PostResponse.post_id == post_id
-        ).all()
+        ).offset(offset).limit(limit).all()
 
     # Update Response Status
     @staticmethod

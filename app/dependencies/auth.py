@@ -1,16 +1,12 @@
 from fastapi.security import OAuth2PasswordBearer
-from jose import jwt, JWTError
 from fastapi import HTTPException, status, Depends
-from app.core.config import settings
-
-SECRET_KEY = settings.SECRET_KEY
-ALGORITHM = settings.ALGORITHM
+from app.core.jwt_utils import decode_access_token
 
 oauth2_bearer = OAuth2PasswordBearer(tokenUrl="auth/login")
 
 async def get_current_user(token: str = Depends(oauth2_bearer)):
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = decode_access_token(token)
 
         email = payload.get("email")
         user_id = payload.get("user_id")
@@ -26,7 +22,7 @@ async def get_current_user(token: str = Depends(oauth2_bearer)):
             "user_id": user_id
         }
 
-    except JWTError:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token"

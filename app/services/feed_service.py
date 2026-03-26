@@ -2,7 +2,8 @@ from datetime import datetime
 from typing import Optional
 from sqlalchemy.orm import Session
 
-from app.models.posts import Post
+from app.models import Post
+from app.schemas.post_schema import FeedResponse, FeedPostResponse, FeedCreator, FeedPagination
 
 
 class FeedService:
@@ -20,7 +21,7 @@ class FeedService:
             db.query(Post)
             .options(
                 joinedload(Post.creator),  # FIX creator N+1
-                joinedload(Post.images)  # already joined, safe
+                # joinedload(Post.images)  # already joined, safe
             )
             .filter(Post.is_active == True)
         )
@@ -43,28 +44,28 @@ class FeedService:
         response = []
 
         for post in posts:
-            response.append({
-                "id": post.id,
-                "title": post.title,
-                "description": post.description,
-                "category": post.category,
-                "duration": post.duration,
-                "images": [
-                    image.image_url for image in post.images
-                ],
-                "creator": {
-                    "id": post.creator.id if post.creator else None,
-                    "username": post.creator.username if post.creator else None,
-                    "profile_photo": post.creator.profile_image if post.creator else None
-                },
-                "created_at": post.created_at
-            })
+            response.append(
+                FeedPostResponse(
+                    id=post.id,
+                    title=post.title,
+                    description=post.description,
+                    category=post.category,
+                    duration=post.duration,
+                    images=[image.image_url for image in post.images],
+                    creator=FeedCreator(
+                        id=post.creator.id if post.creator else None,
+                        username=post.creator.username if post.creator else None,
+                        profile_photo=post.creator.profile_image if post.creator else None
+                    ),
+                    created_at=post.created_at
+                )
+            )
 
-        return {
-            "posts": response,
-            "pagination": {
-                "limit": limit,
-                "has_next": has_next,
-                "next_cursor": next_cursor.isoformat() if next_cursor else None
-            }
-        }
+        return FeedResponse(
+            posts=response,
+            pagination=FeedPagination(
+                limit=limit,
+                has_next=has_next,
+                next_cursor=next_cursor.isoformat() if next_cursor else None
+            )
+        )

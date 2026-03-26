@@ -19,7 +19,7 @@ async def create_post(
     description: str = Form(...),
     category: str = Form(...),
     duration: str | None = Form(None),
-    images: list[UploadFile] | None = File(None),
+    images: list[UploadFile] = File(default=[]),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
@@ -75,13 +75,17 @@ def quick_apply(
 @router.get("/{post_id}/responses")
 def get_post_responses(
     post_id: int,
+    limit: int = Query(10, le=50),
+    offset: int = Query(0),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
     return PostService.get_post_responses(
         db=db,
         post_id=post_id,
-        user_id=current_user["user_id"]
+        user_id=current_user["user_id"],
+        limit=limit,
+        offset=offset
     )
 
 

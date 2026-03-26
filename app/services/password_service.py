@@ -27,7 +27,10 @@ class PasswordService:
         return {"message": "Reset link sent"}
 
     @staticmethod
-    async def reset_password(token: str, new_password: str, db: Session):
+    async def reset_password(token: str, new_password: str, confirm_password: str, db: Session):
+        if new_password != confirm_password:
+            raise HTTPException(status_code=400, detail="Passwords do not match")
+
         payload = decode_access_token(token)
         user = db.query(Users).filter(Users.id == payload["user_id"]).first()
 

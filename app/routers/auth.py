@@ -7,7 +7,8 @@ from fastapi.security import OAuth2PasswordRequestForm
 
 from app.database import get_db
 from app.models import Users
-from app.schemas.auth_schema import CreateUserRequest, VerifyOtpRequest, RefreshRequest, ResendOtpRequest, ForgotPasswordRequest, ResetPasswordRequest
+from app.schemas.auth_schema import CreateUserRequest, VerifyOtpRequest, RefreshRequest, ResendOtpRequest, \
+    ForgotPasswordRequest, ResetPasswordRequest, UpdateMobileRequest
 from app.schemas.token_schema import Token
 from app.core.rate_limiter import RateLimiter
 
@@ -185,4 +186,33 @@ def get_me(
             "interests": [skill.name for skill in user.skills],
             "isVerified": user.is_verified,
         }
+    }
+
+# ---------------- UPDATE MOBILE ----------------
+@router.post("/update-mobile")
+def update_mobile(
+    payload: UpdateMobileRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    user = db.query(Users).filter(
+        Users.id == current_user["user_id"]
+    ).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Prevent overwriting if already exists (optional but recommended)
+    if user.mobile:
+        raise HTTPException(
+            status_code=400,
+            detail="Mobile number already exists"
+        )
+
+    # Save mobile
+    user.mobile = payload.mobile
+    db.commit()
+
+    return {
+        "message": "Mobile number updated successfully"
     }

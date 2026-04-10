@@ -16,6 +16,7 @@ class Post(Base):
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     is_active = Column(Boolean, default=True)
+    application_count = Column(Integer, default=0, nullable=False)
 
     creator = relationship("Users", backref="posts")
 

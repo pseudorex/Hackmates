@@ -1,12 +1,17 @@
+from datetime import datetime
+
 from fastapi import HTTPException
 from sqlalchemy import desc
 from sqlalchemy.orm import Session, joinedload
 
+from app.models import Users
+from app.models.notification import NotificationType
 from app.models.post_image import PostImage
 from app.models.posts import Post
 from app.models.post_response import PostResponse
 from app.schemas.post_response import MyPostResponse
 from app.services.moderation_service import ModerationService
+from app.services.notification_service import NotificationService
 
 
 class PostService:
@@ -68,7 +73,7 @@ class PostService:
 
     # Quick Apply
     @staticmethod
-    def quick_apply(db: Session, post_id: int, user_id: int):
+    async def quick_apply(db: Session, post_id: int, user_id: int):
         post = db.query(Post).filter(Post.id == post_id).first()
         if not post:
             raise HTTPException(status_code=404, detail="Post not found")
@@ -76,6 +81,16 @@ class PostService:
         if post.created_by == user_id:
             raise HTTPException(status_code=400, detail="Cannot apply to your own post")
 
+        # NEW: Fetch user and check mobile
+        user = db.query(Users).filter(Users.id == user_id).first()
+
+        if not user.mobile:
+            raise HTTPException(
+                status_code=400,
+                detail="Mobile number required before applying"
+            )
+
+        # Existing check
         existing = db.query(PostResponse).filter(
             PostResponse.post_id == post_id,
             PostResponse.responder_id == user_id
@@ -91,12 +106,39 @@ class PostService:
         )
 
         db.add(response)
+
+        # Increment application count
+        post.application_count = (post.application_count or 0) + 1
+
         db.commit()
+        db.refresh(response)
+        db.refresh(post)
+
+        # Notify Post Owner
+        applicant = response.responder
+        await NotificationService.create_notification(
+            db=db,
+            user_id=post.created_by,
+            type=NotificationType.NEW_APPLICATION,
+            title=f"New application on {post.title}",
+            description=f"{applicant.username} applied just now",
+            action_url=f"/posts/{post.id}/responses",
+            metadata={
+                "post_id": post.id,
+                "post_title": post.title,
+                "applicant_id": applicant.id,
+                "applicant_name": applicant.username,
+                "applicant_avatar": applicant.profile_image,
+                "total_applications_on_post": post.application_count
+            }
+        )
 
         return {
             "message": "Quick apply successful",
-            "status": "pending"
+            "status": "pending",
+            "application_count": post.application_count
         }
+
 
     # Get Responses
     @staticmethod
@@ -106,17 +148,36 @@ class PostService:
         if not post or post.created_by != user_id:
             raise HTTPException(status_code=403, detail="Not authorized")
 
-        return db.query(PostResponse).filter(
-            PostResponse.post_id == post_id
-        ).offset(offset).limit(limit).all()
+        responses = (
+            db.query(PostResponse, Users)
+            .join(Users, Users.id == PostResponse.responder_id)
+            .filter(PostResponse.post_id == post_id)
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+
+        return [
+            {
+                "response_id": response.id,
+                "user_id": user.id,
+                "username": user.username,
+                "mobile": user.mobile,
+                "status": response.status,
+                "message": response.message,
+                "created_at": response.created_at
+            }
+            for response, user in responses
+        ]
 
     # Update Response Status
     @staticmethod
-    def update_response_status(
+    async def update_response_status(
         db: Session,
         response_id: int,
         status: str,
-        user_id: int
+        user_id: int,
+        owner_response_message: str | None = None
     ):
         response = db.query(PostResponse).filter(
             PostResponse.id == response_id
@@ -132,12 +193,44 @@ class PostService:
         if post.created_by != user_id:
             raise HTTPException(status_code=403, detail="Not authorized")
 
+        # Update status and review info
         response.status = status
+        response.reviewed_at = datetime.utcnow()
+        response.reviewed_by = user_id
+        response.owner_response_message = owner_response_message
+
         db.commit()
+        db.refresh(response)
+
+            # Notify Applicant
+        notif_type = NotificationType.APPLICATION_APPROVED
+        if status == "rejected":
+            notif_type = NotificationType.APPLICATION_REJECTED
+        elif status == "shortlisted":
+            notif_type = NotificationType.APPLICATION_SHORTLISTED
+
+        await NotificationService.create_notification(
+            db=db,
+            user_id=response.responder_id,
+            type=notif_type,
+            title=f"Your application has been {status}",
+            description=f"{post.title} - {post.creator.username}",
+            action_url=f"/posts/{post.id}",
+            metadata={
+                "post_id": post.id,
+                "post_title": post.title,
+                "owner_id": post.creator.id,
+                "owner_name": post.creator.username,
+                "owner_avatar": post.creator.profile_image,
+                "status": status,
+                "message": owner_response_message
+            }
+        )
 
         return {
             "message": f"Response {status}",
-            "chat_enabled": False
+            "chat_enabled": True if status == "accepted" else False,
+            "status": status
         }
 
     # My Posts

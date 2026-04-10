@@ -60,12 +60,12 @@ async def create_post(
 
 
 @router.post("/{post_id}/quick-apply")
-def quick_apply(
+async def quick_apply(
     post_id: int,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-    return PostService.quick_apply(
+    return await PostService.quick_apply(
         db=db,
         post_id=post_id,
         user_id=current_user["user_id"]
@@ -90,17 +90,18 @@ def get_post_responses(
 
 
 @router.put("/responses/{response_id}")
-def update_response_status(
+async def update_response_status(
     response_id: int,
     payload: UpdateResponseStatusSchema,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-    return PostService.update_response_status(
+    return await PostService.update_response_status(
         db=db,
         response_id=response_id,
         status=payload.status,
-        user_id=current_user["user_id"]
+        user_id=current_user["user_id"],
+        owner_response_message=payload.owner_response_message
     )
 
 

@@ -18,6 +18,7 @@ class Users(Base):
     is_active = Column(Boolean, default=True)
     is_verified = Column(Boolean, default=False)
     profile_image = Column(String, nullable=True)
+    mobile = Column(String(15), nullable=True)
 
     skills = relationship(
         "Skills",

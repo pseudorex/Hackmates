@@ -18,6 +18,7 @@ class PostResponse(BaseModel):
     images: List[str]
     created_at: datetime
     is_active: bool
+    application_count: int
 
     class Config:
         from_attributes = True

@@ -25,3 +25,6 @@ class ResetPasswordRequest(BaseModel):
     token: str
     password: str = Field(..., min_length=6)
     confirm_password: str = Field(..., min_length=6)
+
+class UpdateMobileRequest(BaseModel):
+    mobile: str = Field(..., min_length=10, max_length=15)

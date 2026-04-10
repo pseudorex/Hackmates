@@ -11,6 +11,7 @@ class ResponseStatus(str, enum.Enum):
     pending = "pending"
     accepted = "accepted"
     rejected = "rejected"
+    shortlisted = "shortlisted"
 
 
 class PostResponse(Base):
@@ -23,8 +24,23 @@ class PostResponse(Base):
     message = Column(Text, nullable=False)
     status = Column(Enum(ResponseStatus), default=ResponseStatus.pending)
 
+    reviewed_at = Column(DateTime, nullable=True)
+    reviewed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    owner_response_message = Column(Text, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # relations
     post = relationship("Post", backref="responses")
-    responder = relationship("Users")
+
+    responder = relationship(
+        "Users",
+        foreign_keys=[responder_id],
+        backref="responses_given"
+    )
+
+    reviewer = relationship(
+        "Users",
+        foreign_keys=[reviewed_by],
+        backref="responses_reviewed"
+    )
